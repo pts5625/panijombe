@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>পানি জমবে? | Pani Jombe?</title>
+<meta name="description" content="Dhaka waterlogging early warning. Pick your area and see if water will collect on the roads today.">
+<meta name="theme-color" content="#14263B">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='22' y='4' width='20' height='56' rx='3' fill='%23fff' stroke='%2314263B' stroke-width='3'/%3E%3Crect x='22' y='30' width='20' height='30' fill='%232B6E8F'/%3E%3Cpath d='M22 16h8M22 24h12M22 32h8M22 40h12M22 48h8' stroke='%2314263B' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Tiro+Bangla&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{
+  --sky:#E7EDF0; --surface:#FFFFFF; --ink:#14263B; --ink-2:#4A5B6E; --line:#C9D4DB;
+  --water:#2B6E8F; --water-2:#4F93B3; --low:#2F8A5B; --mod:#D3921A; --high:#C2362C;
+  --gauge-paint:#F7F4EC; --focus:#2B6E8F;
+  --r-sm:6px; --r-lg:14px;
+  --head:"Tiro Bangla", "Hind Siliguri", Georgia, serif;
+  --body:"Hind Siliguri", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --sky:#0F1B28; --surface:#172636; --ink:#E4ECF2; --ink-2:#A4B4C3; --line:#2C3E51;
+    --water:#4F9CC0; --water-2:#2B6E8F; --low:#45B07A; --mod:#E5A93A; --high:#E5574B;
+    --gauge-paint:#203244; --focus:#7FC0DD;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--sky);color:var(--ink);font:400 17px/1.55 var(--body);padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:4px}
+.wrap{max-width:1080px;margin:0 auto;padding:0 16px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+
+/* top bar */
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0 6px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit}
+.brand svg{width:30px;height:30px;flex:none}
+.brand b{font:400 22px/1.1 var(--head)}
+.brand small{display:block;font-size:12px;color:var(--ink-2);font-weight:500}
+.lang{display:flex;border:1.5px solid var(--ink);border-radius:999px;overflow:hidden}
+.lang button{border:0;background:none;padding:4px 12px;font-size:14px;font-weight:600;cursor:pointer}
+.lang button[aria-pressed="true"]{background:var(--ink);color:var(--sky)}
+
+/* picker */
+.pick{display:grid;grid-template-columns:1fr auto;gap:8px;margin:12px 0 10px}
+.field{position:relative}
+.field label{display:block;font-size:14px;color:var(--ink-2);margin-bottom:4px}
+select{width:100%;appearance:none;background:var(--surface);border:1.5px solid var(--line);border-radius:var(--r-sm);padding:12px 40px 12px 14px;font-size:19px;font-weight:600;cursor:pointer}
+.field::after{content:"";position:absolute;right:16px;bottom:22px;width:9px;height:9px;border-right:2px solid var(--ink);border-bottom:2px solid var(--ink);transform:rotate(45deg);pointer-events:none}
+.locate{align-self:end;height:52px;border:1.5px solid var(--line);background:var(--surface);border-radius:var(--r-sm);padding:0 14px;display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;font-size:15px}
+.locate svg{width:20px;height:20px}
+.who{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.who span{width:100%;font-size:14px;color:var(--ink-2)}
+.chip{border:1.5px solid var(--line);background:transparent;border-radius:999px;padding:5px 13px;font-size:15px;cursor:pointer}
+.chip[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--sky)}
+
+/* the answer */
+.grid{display:grid;gap:18px}
+@media (min-width:900px){.grid{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);align-items:start}}
+.answer{background:var(--surface);border-radius:var(--r-lg);padding:20px 18px 18px;display:grid;grid-template-columns:1fr 84px;gap:16px;border-top:8px solid var(--lvl,var(--line));min-height:260px}
+.answer .when{font-size:15px;color:var(--ink-2);font-weight:500}
+.answer h1{font:400 clamp(34px,8.5vw,50px)/1.12 var(--head);margin:4px 0 10px;color:var(--lvl,var(--ink))}
+.answer .window{font-size:19px;font-weight:600;margin:0 0 12px}
+.answer .advice{margin:0;font-size:17px}
+.answer .src{margin-top:10px;font-size:13px;color:var(--ink-2)}
+.answer.loading h1,.answer.loading .window,.answer.loading .advice{color:transparent;background:linear-gradient(90deg,var(--line),var(--sky),var(--line));background-size:200% 100%;animation:shimmer 1.2s infinite;border-radius:6px}
+@keyframes shimmer{to{background-position:-200% 0}}
+.error{background:var(--surface);border-left:6px solid var(--high);padding:14px 16px;border-radius:var(--r-sm)}
+
+/* gauge: painted flood staff */
+.gauge{position:relative;height:230px}
+.gauge svg{width:84px;height:230px;display:block}
+.gauge .lvl-water{transition:y .9s cubic-bezier(.3,.7,.2,1),height .9s cubic-bezier(.3,.7,.2,1),fill .4s}
+.score{font:600 15px/1 var(--body);text-align:center;margin-top:6px}
+
+/* secondary blocks */
+.block{background:var(--surface);border-radius:var(--r-lg);padding:16px 18px}
+.block h2{font:600 17px/1.3 var(--body);margin:0 0 10px}
+.tomorrow{display:flex;gap:12px;align-items:center}
+.dot{width:14px;height:14px;border-radius:50%;flex:none;background:var(--c,var(--line))}
+.tomorrow p{margin:0}
+.rain{display:flex;align-items:flex-end;gap:2px;height:84px;position:relative;margin-top:6px}
+.rain i{flex:1;background:var(--water-2);border-radius:2px 2px 0 0;min-height:2px}
+.rain i.heavy{background:var(--water)}
+.rain .th{position:absolute;left:0;right:0;border-top:1.5px dashed var(--ink-2);opacity:.6}
+.rain .th em{position:absolute;right:0;top:-18px;font-size:12px;font-style:normal;color:var(--ink-2)}
+.ticks{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-2);margin-top:4px}
+.why{display:grid;gap:8px}
+.why div{display:grid;grid-template-columns:118px 1fr 52px;align-items:center;gap:8px;font-size:15px}
+.why b{height:10px;border-radius:5px;background:var(--line);position:relative;overflow:hidden}
+.why b i{position:absolute;top:0;bottom:0;left:0;background:var(--ink)}
+.why span:last-child{text-align:right;font-weight:600}
+.live{font-size:14px;color:var(--ink-2)}
+.live dl{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0}
+.live dt{font-weight:600;color:var(--ink)}
+.live dd{margin:0;overflow-wrap:anywhere}
+.pulse{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--low);margin-right:6px;box-shadow:0 0 0 0 var(--low);animation:pulse 2s infinite}
+@keyframes pulse{70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
+#map,#map2{height:330px;border-radius:var(--r-sm);z-index:0}
+.replay{background:var(--surface);border-radius:var(--r-lg);padding:4px 18px 16px;margin:14px 0 8px;max-width:none}
+.replay .field{margin:10px 0 12px;max-width:340px}
+.dot.ring{background:transparent;border:3px solid var(--ink)}
+.rpsum{font-size:17px;font-weight:600;margin:12px 0 0}
+.maptabs{display:flex;gap:6px;margin-bottom:8px}
+.legend{display:flex;gap:14px;font-size:14px;margin-top:8px;flex-wrap:wrap}
+.legend span{display:flex;align-items:center;gap:6px}
+.stack{display:grid;gap:18px}
+
+/* pages */
+.page{display:none}
+.page.on{display:block}
+.prose{max-width:68ch}
+.prose h2{font:400 30px/1.2 var(--head);margin:22px 0 8px}
+.prose h3{font-size:18px;margin:22px 0 6px}
+.prose p,.prose li{color:var(--ink)}
+.prose ol{padding-left:22px}
+table{border-collapse:collapse;width:100%;font-size:15px;background:var(--surface);border-radius:var(--r-sm);overflow:hidden}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600}
+td.num{font-variant-numeric:tabular-nums;text-align:right}
+tr.ours td{font-weight:600}
+.scroll{overflow-x:auto}
+
+/* credits */
+.credits{padding:26px 0 10px}
+.credits .made{font:400 clamp(30px,7vw,46px)/1.2 var(--head);margin:6px 0 4px}
+.credits .dept{font-size:19px;font-weight:600;margin:0}
+.credits .uni{font-size:16px;color:var(--ink-2);margin:2px 0 26px}
+.people{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-bottom:24px}
+.person{background:var(--surface);border-radius:var(--r-lg);padding:18px;border-left:6px solid var(--water)}
+.person b{font:400 28px/1.2 var(--head);display:block}
+.person span{color:var(--ink-2);font-size:15px}
+.ack{font-size:15px;color:var(--ink-2)}
+
+/* bottom nav */
+nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom);z-index:10}
+nav.tabs button{flex:1;max-width:200px;border:0;background:none;padding:10px 4px 9px;font-size:14px;font-weight:600;color:var(--ink-2);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
+nav.tabs svg{width:22px;height:22px}
+nav.tabs button[aria-current="page"]{color:var(--ink)}
+nav.tabs button[aria-current="page"] svg{color:var(--water)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="#" data-go="home" aria-label="Pani Jombe home">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="22" y="4" width="20" height="56" rx="3" fill="var(--gauge-paint)" stroke="currentColor" stroke-width="3"/><rect x="23.5" y="30" width="17" height="28.5" fill="var(--water)"/><path d="M22 16h8M22 24h12M22 32h8M22 40h12M22 48h8" stroke="currentColor" stroke-width="3"/></svg>
+      <span><b data-t="app"></b><small data-t="tag"></small></span>
+    </a>
+    <div class="lang" role="group" aria-label="Language">
+      <button data-lang="bn" aria-pressed="true">বাংলা</button>
+      <button data-lang="en" aria-pressed="false">EN</button>
+    </div>
+  </header>
+
+  <!-- ===================== HOME ===================== -->
+  <main id="home" class="page on">
+    <div class="pick">
+      <div class="field">
+        <label for="area" data-t="where"></label>
+        <select id="area"></select>
+      </div>
+      <button class="locate" id="locate" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="10" r="3"/><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/></svg>
+        <span data-t="near"></span>
+      </button>
+    </div>
+    <div class="who" role="group" aria-labelledby="who-l">
+      <span id="who-l" data-t="who"></span>
+      <button class="chip" data-p="commuter" aria-pressed="true" data-t="p_commuter"></button>
+      <button class="chip" data-p="shop" aria-pressed="false" data-t="p_shop"></button>
+      <button class="chip" data-p="driver" aria-pressed="false" data-t="p_driver"></button>
+      <button class="chip" data-p="home" aria-pressed="false" data-t="p_home"></button>
+    </div>
+
+    <div class="grid">
+      <div class="stack">
+        <section class="answer loading" id="answer" aria-live="polite">
+          <div>
+            <div class="when" id="when">&nbsp;</div>
+            <h1 id="verdict">&nbsp;</h1>
+            <p class="window" id="window">&nbsp;</p>
+            <p class="advice" id="advice">&nbsp;</p>
+            <div class="src" id="adviceSrc"></div>
+          </div>
+          <div class="gauge" aria-hidden="true">
+            <svg viewBox="0 0 84 230" id="gauge">
+              <rect x="20" y="2" width="44" height="222" rx="4" fill="var(--gauge-paint)" stroke="var(--ink)" stroke-width="2"/>
+              <rect class="lvl-water" id="gwater" x="21" y="223" width="42" height="0" fill="var(--water)" opacity=".9"/>
+              <g stroke="var(--ink)" stroke-width="2">
+                <path d="M20 156h14M20 90h14"/>
+                <path d="M20 211h7M20 200h7M20 189h7M20 178h7M20 167h7M20 145h7M20 134h7M20 123h7M20 112h7M20 101h7M20 79h7M20 68h7M20 57h7M20 46h7M20 35h7M20 24h7M20 13h7"/>
+              </g>
+              <text x="62" y="152" text-anchor="end" font-size="11" font-weight="700" fill="var(--ink)" id="gMod">40</text>
+              <text x="62" y="86" text-anchor="end" font-size="11" font-weight="700" fill="var(--ink)" id="gHigh">70</text>
+              <path d="M2 156h16M2 90h16" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="3 3"/>
+            </svg>
+            <div class="score" id="score"></div>
+          </div>
+        </section>
+        <div id="err" class="error" hidden></div>
+
+        <section class="block" id="tmrBlock" hidden>
+          <div class="tomorrow"><span class="dot" id="tmrDot"></span><p id="tmrText"></p></div>
+        </section>
+
+        <section class="block">
+          <h2 data-t="rainNext"></h2>
+          <div class="rain" id="rain" role="img"></div>
+          <div class="ticks" id="ticks"></div>
+        </section>
+
+        <section class="block" id="whyBlock" hidden>
+          <h2 data-t="whyH"></h2>
+          <div class="why" id="why"></div>
+        </section>
+      </div>
+
+      <div class="stack">
+        <section class="block">
+          <h2 data-t="mapH"></h2>
+          <div class="maptabs" role="group">
+            <button class="chip" data-day="0" aria-pressed="true" data-t="today"></button>
+            <button class="chip" data-day="1" aria-pressed="false" data-t="tomorrow"></button>
+          </div>
+          <div id="map" role="region" aria-label="Map of Dhaka areas"></div>
+          <div class="legend">
+            <span><i class="dot" style="--c:var(--low)"></i><span data-t="l_low"></span></span>
+            <span><i class="dot" style="--c:var(--mod)"></i><span data-t="l_moderate"></span></span>
+            <span><i class="dot" style="--c:var(--high)"></i><span data-t="l_high"></span></span>
+          </div>
+        </section>
+
+        <section class="block live" id="live">
+          <h2><span class="pulse" aria-hidden="true"></span><span data-t="liveH"></span></h2>
+          <dl id="liveDl"></dl>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===================== HOW IT WORKS ===================== -->
+  <main id="how" class="page prose" aria-labelledby="howH">
+    <h2 id="howH" data-t="howH"></h2>
+    <section class="replay">
+      <h3 data-t="rp_h"></h3>
+      <p data-t="rp_intro"></p>
+      <div class="field"><label for="rpSel" data-t="rp_pick"></label><select id="rpSel"></select></div>
+      <div id="map2" role="region" aria-label="Replay map"></div>
+      <div class="legend">
+        <span><i class="dot" style="--c:var(--low)"></i><span data-t="l_low"></span></span>
+        <span><i class="dot" style="--c:var(--mod)"></i><span data-t="l_moderate"></span></span>
+        <span><i class="dot" style="--c:var(--high)"></i><span data-t="l_high"></span></span>
+        <span><i class="dot ring"></i><span data-t="rp_ring"></span></span>
+      </div>
+      <p class="rpsum" id="rpSum"></p>
+    </section>
+    <div id="howBody"></div>
+  </main>
+
+  <!-- ===================== CREDITS ===================== -->
+  <main id="credits" class="page">
+    <div class="credits">
+      <p class="made" data-t="madeBy"></p>
+      <p class="dept" data-t="dept"></p>
+      <p class="uni" data-t="uni"></p>
+      <div class="people">
+        <div class="person"><b data-t="pritom"></b><span data-t="role1"></span></div>
+        <div class="person"><b data-t="anika"></b><span data-t="role2"></span></div>
+      </div>
+      <p class="ack" data-t="ack"></p>
+      <p class="ack" data-t="ack2"></p>
+    </div>
+  </main>
+</div>
+
+<nav class="tabs" aria-label="Main">
+  <button data-go="home" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3c3 4.2 6 7.6 6 11a6 6 0 0 1-12 0c0-3.4 3-6.8 6-11z"/></svg><span data-t="navHome"></span></button>
+  <button data-go="how"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg><span data-t="navHow"></span></button>
+  <button data-go="credits"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9.5" r="2.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M15 14.6a5 5 0 0 1 6.5 4.9"/></svg><span data-t="navCredits"></span></button>
+</nav>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const S = {
+  bn: {
+    app:"পানি জমবে?", tag:"ঢাকার জলাবদ্ধতা সতর্কবার্তা", where:"আপনার এলাকা", near:"আমার কাছে",
+    who:"আপনি কে?", p_commuter:"যাত্রী", p_shop:"দোকানদার", p_driver:"চালক", p_home:"বাসায় আছি",
+    today:"আজ", tomorrow:"আগামীকাল",
+    v_high:"হ্যাঁ, পানি জমবে", v_moderate:"পানি জমতে পারে", v_low:"না, পানি জমবে না",
+    l_low:"কম ঝুঁকি", l_moderate:"মাঝারি ঝুঁকি", l_high:"বেশি ঝুঁকি",
+    win:(a,b)=>`${a} থেকে ${b} পর্যন্ত সাবধানে থাকুন`, winLow:"রাস্তা স্বাভাবিক থাকার কথা",
+    risk:"ঝুঁকি", rainNext:"আগামী ৩৬ ঘণ্টার বৃষ্টি (মিমি/ঘণ্টা)", heavyLine:"ড্রেন ভরতে শুরু করে",
+    whyH:"কেন এই সিদ্ধান্ত", f_rain:"পূর্বাভাসের বৃষ্টি", f_terrain:"এলাকার উচ্চতা", f_history:"আগের জলাবদ্ধতা",
+    mapH:"পুরো ঢাকার অবস্থা", liveH:"লাইভ ডেটা",
+    lv_src:"আবহাওয়া", lv_time:"হালনাগাদ", lv_models:"মডেল", lv_ai:"পরামর্শ", lv_ml:"এমএল মডেল",
+    agree:(k,n)=>`${n}টি আবহাওয়া মডেলের ${k}টি একমত`,
+    tmr:(lvl,w)=>`আগামীকাল: ${lvl}${w?`, ${w}`:""}`,
+    navHome:"এলাকা", navHow:"কীভাবে কাজ করে", navCredits:"নির্মাতা",
+    madeBy:"এই অ্যাপটি তৈরি করেছেন প্রীতম ও আনিকা", dept:"নগর ও অঞ্চল পরিকল্পনা বিভাগ (URP)",
+    uni:"খুলনা প্রকৌশল ও প্রযুক্তি বিশ্ববিদ্যালয় (কুয়েট)",
+    pritom:"প্রীতম", anika:"আনিকা", role1:"নগর ও অঞ্চল পরিকল্পনা, কুয়েট", role2:"নগর ও অঞ্চল পরিকল্পনা, কুয়েট",
+    ack:"বাংলাদেশ ইনস্টিটিউট অব প্ল্যানার্স (BIP) আয়োজিত বিশ্ব নগর পরিকল্পনা দিবস ২০২৬, Apps4Solutions প্রতিযোগিতার জন্য তৈরি।",
+    ack2:"আবহাওয়ার ডেটা: Open-Meteo (CC BY 4.0)। মানচিত্র: © OpenStreetMap অবদানকারীরা। পরামর্শ লেখা: Google Gemini। জলাবদ্ধতার রেকর্ড: দেশের জাতীয় দৈনিকের প্রতিবেদন (উৎস \"কীভাবে কাজ করে\" পাতায়)।",
+    howH:"কীভাবে কাজ করে", farOut:"আপনার অবস্থান ঢাকার বাইরে মনে হচ্ছে। তালিকা থেকে এলাকা বেছে নিন।",
+    noGeo:"অবস্থান পাওয়া যায়নি। তালিকা থেকে এলাকা বেছে নিন।",
+    rp_h:"সত্যিকারের ঝড়ে পরীক্ষা করুন", rp_intro:"পত্রিকায় খবর হওয়া একটি ঝড়ের দিন বেছে নিন। মানচিত্রে দেখবেন মডেল সেদিন কী বলত; কালো বৃত্ত দেওয়া এলাকাগুলোতে পত্রিকা পানি জমার খবর দিয়েছিল। প্রতিটি বছরের ফল এমন মডেল থেকে, যে ওই বছরের কোনো তথ্য দেখেনি।",
+    rp_pick:"ঝড়ের দিন", rp_ring:"পত্রিকায় খবর হওয়া এলাকা",
+    rp_sum:r=>`পত্রিকায় আসা ${bnDigits(r.n_reported)}টি এলাকার ${bnDigits(r.reported_high)}টিকে মডেল বেশি ঝুঁকি বলেছে (মাঝারি বা বেশি: ${bnDigits(r.reported_flagged)}টি)। খবরে না আসা ${bnDigits(r.n_others)}টি এলাকার ${bnDigits(r.others_high)}টিকে বেশি ঝুঁকি বলেছে।`,
+    srcBuilt:"পরামর্শ: অ্যাপের নিজস্ব নির্দেশনা", builtIn:"অ্যাপের নিজস্ব নির্দেশনা (Gemini কী সেট করা নেই)", srcAi:m=>`পরামর্শ লিখেছে ${m}`,
+  },
+  en: {
+    app:"Pani Jombe?", tag:"Dhaka waterlogging alert", where:"Your area", near:"Near me",
+    who:"Who are you?", p_commuter:"Commuter", p_shop:"Shopkeeper", p_driver:"Driver", p_home:"At home",
+    today:"Today", tomorrow:"Tomorrow",
+    v_high:"Yes, water will collect", v_moderate:"Water may collect", v_low:"No, roads should stay clear",
+    l_low:"Low risk", l_moderate:"Moderate risk", l_high:"High risk",
+    win:(a,b)=>`Take care from ${a} to ${b}`, winLow:"Roads should stay normal",
+    risk:"risk", rainNext:"Rain in the next 36 hours (mm per hour)", heavyLine:"drains start to fill",
+    whyH:"Why this decision", f_rain:"Forecast rain", f_terrain:"Height of the area", f_history:"Past waterlogging",
+    mapH:"All of Dhaka", liveH:"Live data",
+    lv_src:"Weather", lv_time:"Updated", lv_models:"Models", lv_ai:"Advice", lv_ml:"ML model",
+    agree:(k,n)=>`${k} of ${n} weather models agree`,
+    tmr:(lvl,w)=>`Tomorrow: ${lvl}${w?`, ${w}`:""}`,
+    navHome:"My area", navHow:"How it works", navCredits:"Credits",
+    madeBy:"Created by Pritom and Anika", dept:"Department of Urban and Regional Planning (URP)",
+    uni:"Khulna University of Engineering & Technology (KUET)",
+    pritom:"Pritom", anika:"Anika", role1:"Urban and Regional Planning, KUET", role2:"Urban and Regional Planning, KUET",
+    ack:"Built for the Apps4Solutions competition, World Town Planning Day 2026, Bangladesh Institute of Planners (BIP).",
+    ack2:"Weather data: Open-Meteo (CC BY 4.0). Map: © OpenStreetMap contributors. Advice wording: Google Gemini. Waterlogging records: national newspaper reports (sources on the How it works page).",
+    howH:"How it works", farOut:"You seem to be outside Dhaka. Pick an area from the list.",
+    noGeo:"Couldn't get your location. Pick an area from the list.",
+    rp_h:"Test it on a real storm", rp_intro:"Pick a storm day that made the news. The map shows what the model would have said that day; areas with a black ring are the ones newspapers reported as waterlogged. Each year is scored by a model that never saw any data from that year.",
+    rp_pick:"Storm day", rp_ring:"Reported in the news",
+    rp_sum:r=>`The model rated ${r.reported_high} of the ${r.n_reported} reported areas as high risk (${r.reported_flagged} as moderate or high). Of the ${r.n_others} areas not in the reports, it rated ${r.others_high} as high.`,
+    srcBuilt:"Advice: app's built-in guidance", builtIn:"App's built-in guidance (no Gemini key set)", srcAi:m=>`Advice written by ${m}`,
+  }
+};
+const LVL = {low:"var(--low)", moderate:"var(--mod)", high:"var(--high)"};
+const store = { get(k){try{return localStorage.getItem(k)}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}} };
+const st = { lang: store.get("pj_lang") || "bn", area: store.get("pj_area") || "malibagh",
+             persona: store.get("pj_persona") || "commuter", data:null, city:null, day:0, areas:[], card:null };
+const $ = s => document.querySelector(s);
+const t = k => S[st.lang][k];
+const bnDigits = s => st.lang === "bn" ? String(s).replace(/\d/g, d => "০১২৩৪৫৬৭৮৯"[d]) : String(s);
+
+function clock(hhmm){
+  const h = +hhmm.slice(0,2);
+  if (st.lang === "en"){ const h12 = h % 12 || 12; return `${h12} ${h < 12 ? "am" : "pm"}`; }
+  const part = h < 4 ? "রাত" : h < 6 ? "ভোর" : h < 12 ? "সকাল" : h < 15 ? "দুপুর" : h < 18 ? "বিকাল" : h < 20 ? "সন্ধ্যা" : "রাত";
+  return `${part} ${bnDigits(h % 12 || 12)}টা`;
+}
+
+function applyText(){
+  document.documentElement.lang = st.lang;
+  document.querySelectorAll("[data-t]").forEach(el => { const v = t(el.dataset.t); if (typeof v === "string") el.textContent = v; });
+  document.querySelectorAll(".lang button").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === st.lang));
+  document.querySelectorAll("[data-p]").forEach(b => b.setAttribute("aria-pressed", b.dataset.p === st.persona));
+  fillSelect();
+  if (st.card) renderHow();
+  if (rpList.length){ fillReplaySelect(); drawReplay(); }
+}
+
+function fillSelect(){
+  const sel = $("#area");
+  const name = a => st.lang === "bn" ? a.name_bn : a.name_en;
+  const sorted = [...st.areas].sort((a,b) => name(a).localeCompare(name(b), st.lang));
+  sel.innerHTML = sorted.map(a => `<option value="${a.id}">${name(a)}</option>`).join("");
+  sel.value = st.area;
+}
+
+async function getJSON(u){ const r = await fetch(u); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j; }
+
+async function loadRisk(){
+  $("#answer").classList.add("loading"); $("#err").hidden = true;
+  try{
+    st.data = await getJSON(`/api/risk?area=${st.area}&lang=${st.lang}&persona=${st.persona}`);
+    renderRisk();
+  }catch(e){
+    $("#answer").classList.remove("loading");
+    $("#err").textContent = e.message; $("#err").hidden = false;
+  }
+}
+
+function headline(d){
+  // the decision people need: today, unless today is calm and tomorrow is not
+  const [a, b] = d.days;
+  return (a.level === "low" && b && b.level !== "low") ? b : a;
+}
+
+function windowText(day){
+  if (day.level === "low" || !day.window) return t("winLow");
+  return t("win")(clock(day.window.start), clock(day.window.end));
+}
+
+function renderRisk(){
+  const d = st.data, day = headline(d), other = d.days.find(x => x !== day);
+  const box = $("#answer");
+  box.classList.remove("loading");
+  box.style.setProperty("--lvl", LVL[day.level]);
+  const aname = st.lang === "bn" ? d.area.name_bn : d.area.name_en;
+  $("#when").textContent = `${aname}, ${day.rel === "today" ? t("today") : t("tomorrow")}`;
+  $("#verdict").textContent = t("v_" + day.level);
+  $("#window").textContent = windowText(day);
+  $("#advice").textContent = d.advice.text;
+  $("#adviceSrc").textContent = d.advice.source === "built-in" ? t("srcBuilt") : t("srcAi")(d.advice.source);
+  // gauge: 0-100 score mapped onto the painted staff
+  const h = Math.round(220 * day.score / 100);
+  const w = $("#gwater"); w.setAttribute("y", 223 - h); w.setAttribute("height", h); w.setAttribute("fill", LVL[day.level]);
+  $("#score").textContent = `${bnDigits(day.score)}/${bnDigits(100)}`;
+  $("#gMod").textContent = bnDigits(40); $("#gHigh").textContent = bnDigits(70);
+  // the other day
+  if (other){
+    $("#tmrBlock").hidden = false;
+    $("#tmrDot").style.setProperty("--c", LVL[other.level]);
+    const label = other.rel === "today" ? t("today") : t("tomorrow");
+    const w2 = other.level !== "low" && other.window ? `${clock(other.window.start)}–${clock(other.window.end)}` : "";
+    $("#tmrText").textContent = `${label}: ${t("l_" + other.level)}${w2 ? ", " + w2 : ""}`;
+  }
+  renderRain(d.hourly);
+  renderWhy(day);
+  renderLive(d, day);
+  highlightMap();
+}
+
+function renderRain(hours){
+  const max = Math.max(6, ...hours.map(x => x.mm));
+  const el = $("#rain");
+  el.innerHTML = hours.map(x => `<i class="${x.mm >= 2 ? "heavy" : ""}" style="height:${Math.max(2, 84 * x.mm / max)}px" title="${x.t.slice(11,16)}: ${x.mm} mm"></i>`).join("")
+    + `<div class="th" style="bottom:${84 * 2 / max}px"><em>${t("heavyLine")}</em></div>`;
+  const total = hours.reduce((s,x) => s + x.mm, 0).toFixed(1);
+  el.setAttribute("aria-label", `${t("rainNext")}: ${total} mm`);
+  const ticks = hours.filter((_,i) => i % 6 === 0).map(x => clock(x.t.slice(11,16)));
+  $("#ticks").innerHTML = ticks.map(s => `<span>${s}</span>`).join("");
+}
+
+function renderWhy(day){
+  const f = (day.why || []).filter(x => x.effect !== 0);
+  $("#whyBlock").hidden = !f.length;
+  const max = Math.max(10, ...f.map(x => Math.abs(x.effect)));
+  $("#why").innerHTML = f.map(x => `<div><span>${t("f_" + x.factor)}</span><b><i style="width:${100 * Math.abs(x.effect) / max}%;${x.effect < 0 ? "background:var(--low)" : ""}"></i></b><span>${x.effect > 0 ? "+" : "−"}${bnDigits(Math.abs(x.effect))}%</span></div>`).join("");
+}
+
+function renderLive(d, day){
+  const n = d.live.models.length, k = Math.round(day.agreement * n);
+  const hm = d.live.fetched_at.slice(11,16);
+  const time = st.lang === "bn" ? `${clock(hm).replace("টা","")}:${bnDigits(hm.slice(3))}` : hm;
+  $("#liveDl").innerHTML = `
+    <dt>${t("lv_src")}</dt><dd>Open-Meteo forecast API</dd>
+    <dt>${t("lv_time")}</dt><dd>${time}</dd>
+    <dt>${t("lv_models")}</dt><dd>${d.live.models.join(", ")}<br>${t("agree")(bnDigits(k), bnDigits(n))}</dd>
+    <dt>${t("lv_ml")}</dt><dd>Boosting + logistic blend, ${bnDigits(day.score)}/${bnDigits(100)}</dd>
+    <dt>${t("lv_ai")}</dt><dd>${d.advice.source === "built-in" ? t("builtIn") : d.advice.source}</dd>`;
+}
+
+/* ---------- map ---------- */
+let map, markers = {};
+function initMap(){
+  if (!window.L) return;
+  map = L.map("map", {scrollWheelZoom:false}).setView([23.775, 90.4], 12);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:17, attribution:"© OpenStreetMap"}).addTo(map);
+}
+async function loadCity(){
+  try{ st.city = await getJSON("/api/city"); drawMap(); }catch(e){ /* map stays without colours */ }
+}
+function drawMap(){
+  if (!map || !st.city) return;
+  const days = Object.values(st.city.days); const day = days[st.day] || days[0];
+  day.areas.forEach(a => {
+    const meta = st.areas.find(x => x.id === a.id); if (!meta) return;
+    const opts = {radius: a.id === st.area ? 11 : 8, color: getComputedStyle(document.body).getPropertyValue("--ink"),
+                  weight: a.id === st.area ? 3 : 1, fillColor: cssVar(a.level), fillOpacity: .9};
+    if (markers[a.id]) markers[a.id].setStyle(opts).setRadius(opts.radius);
+    else { markers[a.id] = L.circleMarker([meta.lat, meta.lon], opts).addTo(map).on("click", () => choose(a.id)); }
+    markers[a.id].bindTooltip(`${st.lang === "bn" ? meta.name_bn : meta.name_en}: ${t("l_" + a.level)}`);
+  });
+}
+function cssVar(level){ const v = {low:"--low", moderate:"--mod", high:"--high"}[level]; return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function highlightMap(){ drawMap(); }
+
+/* ---------- replay ---------- */
+let map2, rpMarkers = {}, rpList = [];
+async function initReplay(){
+  if (map2 || !window.L) return;
+  map2 = L.map("map2", {scrollWheelZoom:false}).setView([23.775, 90.4], 12);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:17, attribution:"© OpenStreetMap"}).addTo(map2);
+  if (st.rp) drawReplay();
+}
+function fillReplaySelect(){
+  const fmt = d => new Date(d + "T00:00").toLocaleDateString(st.lang === "bn" ? "bn-BD" : "en-GB", {day:"numeric", month:"long", year:"numeric"});
+  $("#rpSel").innerHTML = rpList.map(e => `<option value="${e.date}">${fmt(e.date)}${e.reported_mm.length ? ` (${bnDigits(Math.max(...e.reported_mm))} ${st.lang === "bn" ? "মিমি" : "mm"})` : ""}</option>`).join("");
+  if (st.rpDate) $("#rpSel").value = st.rpDate;
+}
+async function loadReplay(date){
+  st.rpDate = date;
+  try{ st.rp = await getJSON(`/api/replay?date=${date}`); drawReplay(); }catch(e){ $("#rpSum").textContent = e.message; }
+}
+function drawReplay(){
+  const r = st.rp; if (!r) return;
+  $("#rpSum").textContent = t("rp_sum")(r);
+  if (!map2) return;
+  r.areas.forEach(a => {
+    const meta = st.areas.find(x => x.id === a.id); if (!meta) return;
+    const o = {radius: a.reported ? 10 : 8, color: a.reported ? cssVarRaw("--ink") : "#ffffff", weight: a.reported ? 3.5 : 1,
+               fillColor: cssVar(a.level), fillOpacity: .92};
+    if (rpMarkers[a.id]) rpMarkers[a.id].setStyle(o).setRadius(o.radius);
+    else rpMarkers[a.id] = L.circleMarker([meta.lat, meta.lon], o).addTo(map2);
+    rpMarkers[a.id].bindTooltip(`${st.lang === "bn" ? meta.name_bn : meta.name_en}: ${t("l_" + a.level)}${a.reported ? " • " + t("rp_ring") : ""}`);
+  });
+}
+function cssVarRaw(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+$("#rpSel").addEventListener("change", e => loadReplay(e.target.value));
+
+/* ---------- how it works ---------- */
+function renderHow(){
+  const c = st.card, en = st.lang === "en";
+  const r = c.temporal_holdout.results, rows = Object.entries(r);
+  const f = x => x == null || Number.isNaN(x) ? "–" : bnDigits(Number(x).toFixed(2));
+  const table = `<div class="scroll"><table><thead><tr><th>${en ? "Approach" : "পদ্ধতি"}</th><th>${en ? "Finds the right areas on a storm day" : "ঝড়ের দিনে সঠিক এলাকা চেনা"}</th><th>${en ? "Tells storm days from other rainy days" : "অন্য বৃষ্টির দিন থেকে আলাদা করা"}</th><th>${en ? "Overall (area-day)" : "সামগ্রিক (এলাকা-দিন)"}</th></tr></thead><tbody>
+    ${rows.map(([k,v],i) => `<tr class="${i===0?"ours":""}"><td>${en ? k.trim() : (BN_ROWS[i] || k.trim())}</td><td class="num">${f(v.auc_spatial_within_event)}</td><td class="num">${f(v.auc_event_day)}</td><td class="num">${f(v.auc_area_day)}</td></tr>`).join("")}
+  </tbody></table></div>`;
+  const ar = c.alert_rates_leave_one_year_out || {};
+  const pct = x => x == null ? "–" : bnDigits(Math.round(100 * x)) + "%";
+  $("#howBody").innerHTML = en ? `
+    <p>Every monsoon, roads in Malibagh, Mirpur, Motijheel and many other parts of Dhaka go under water within an hour of heavy rain. Most people only find out when they are already standing in it. Pani Jombe? tells you before you leave home.</p>
+    <h3>What happens when you open the app</h3>
+    <ol>
+      <li>The server fetches the live hourly rain forecast for Dhaka from the Open-Meteo API, from five independent weather models (ECMWF, NOAA GFS, DWD ICON, Canada GEM, Japan JMA), plus the last 7 days of rain.</li>
+      <li>It turns each forecast into the rain signals that cause waterlogging: the heaviest 1, 3 and 6 hours, the day's total, and how wet the city already is from the previous days.</li>
+      <li>A trained machine-learning model combines these with what is fixed about each of the 40 areas: ground height, whether it sits lower than its surroundings, and how often it has flooded before. It runs once per weather model, and the app reports the middle result and how many models agree.</li>
+      <li>The decision follows the risk-matrix logic planners use: hazard × susceptibility. Hazard asks whether storm-type rain is coming to the city; susceptibility is how your area ranks against the other 39 that day. High hazard in a flood-prone area means "Yes, water will collect". The app adds the hours to avoid, and Google Gemini writes it as one or two plain sentences for your situation, using only the model's numbers.</li>
+    </ol>
+    <h3>How the model was trained</h3>
+    <p>There is no official database of Dhaka waterlogging, so we built one: ${bnDigits(c.n_reports)} documented events from ${bnDigits(c.rain_period[0].slice(0,4))} to ${bnDigits(c.rain_period[1].slice(0,4))}, each taken from a national newspaper report that names the flooded places, with the source linked. Each event is matched with hourly rain from the ERA5 reanalysis for the same day. That gives ${bnDigits(c.n_positive_area_days)} reported area-days among ${bnDigits(c.n_training_rows.toLocaleString())} area-days in total.</p>
+    <p>The model blends two learners: gradient boosting (the same family as LightGBM and XGBoost) with physical rules built in, so more rain can never lower the risk and higher ground can never raise it, and a logistic regression that stays steady with few examples. The design was chosen by leave-one-year-out cross-validation before the final test. News reports miss some flooding, so a day with no report is treated as a weaker "no" the more it rained, instead of a certain one.</p>
+    <h3>How well it works</h3>
+    <p>We trained only on ${c.temporal_holdout.train.replace("<= ","up to ")} and tested on ${c.temporal_holdout.test.replace(">= ","")} onwards, years the model never saw. Scores are ROC-AUC: 1.0 is perfect, 0.5 is guessing.</p>
+    ${table}
+    <p>As a warning system, tested year by year on years each model never saw: on ${pct(ar.event_days_hazard_moderate_or_high)} of documented storm days the app raised an alert. ${pct(ar.reported_areas_flagged_moderate_or_high)} of the areas newspapers reported were flagged moderate or high, and ${pct(ar.reported_areas_flagged_high)} high, against ${pct(ar.unreported_areas_on_event_days_flagged_high)} high for areas not in the reports. On light-rain days only ${pct(ar.light_rain_days_flagged_moderate_or_high)} of areas got any alert.</p>
+    <h3>Limits</h3>
+    <p>Newspapers report busy, central places more often, so quieter neighbourhoods may be under-rated, and we could not find a report for every storm. Historical reanalysis rain reads about four times lower than BMD gauges on storm days (median ${bnDigits(c.median_reanalysis_rain_on_event_days_mm)} mm against about 80 mm reported), which smooths out short downpours. Elevation comes from a 90 m satellite surface model that partly includes buildings. The forecast is for the whole city, so a very local storm can be missed. Use the app as a warning, not a guarantee, and follow DNCC, DSCC and BMD advisories.</p>
+    <h3>Why it matters</h3>
+    <p>Early warning is a core part of SDG 11.5 (cutting losses from water-related disasters in cities), SDG 13.1 (resilience to climate hazards) and the Sendai Framework target G. The same model output can show city planners which areas fail first under a given rain, to guide drainage investment.</p>
+    <h3>Sources for the waterlogging records</h3><p id="srcs"></p>`
+  : `
+    <p>প্রতি বর্ষায় ভারী বৃষ্টির এক ঘণ্টার মধ্যেই মালিবাগ, মিরপুর, মতিঝিলসহ ঢাকার অনেক রাস্তা পানিতে ডুবে যায়। বেশিরভাগ মানুষ টের পান যখন তাঁরা পানিতে দাঁড়িয়ে আছেন। "পানি জমবে?" বাসা থেকে বের হওয়ার আগেই জানিয়ে দেয়।</p>
+    <h3>অ্যাপ খুললে যা ঘটে</h3>
+    <ol>
+      <li>সার্ভার Open-Meteo API থেকে ঢাকার ঘণ্টাভিত্তিক বৃষ্টির লাইভ পূর্বাভাস আনে, পাঁচটি আলাদা আবহাওয়া মডেল থেকে (ECMWF, NOAA GFS, DWD ICON, কানাডার GEM, জাপানের JMA), সঙ্গে গত ৭ দিনের বৃষ্টি।</li>
+      <li>প্রতিটি পূর্বাভাস থেকে জলাবদ্ধতার কারণগুলো হিসাব করে: সবচেয়ে ভারী ১, ৩ ও ৬ ঘণ্টার বৃষ্টি, দিনের মোট বৃষ্টি এবং আগের দিনগুলোর বৃষ্টিতে শহর কতটা ভেজা।</li>
+      <li>প্রশিক্ষিত মেশিন লার্নিং মডেল এগুলোর সঙ্গে ৪০টি এলাকার স্থায়ী বৈশিষ্ট্য মেলায়: জমির উচ্চতা, আশপাশের চেয়ে নিচু কিনা, আর আগে কতবার পানি জমেছে। প্রতিটি আবহাওয়া মডেলের জন্য আলাদা হিসাব হয়; অ্যাপ মাঝামাঝি ফল আর কয়টি মডেল একমত তা দেখায়।</li>
+      <li>সিদ্ধান্ত নেওয়া হয় পরিকল্পনাবিদদের ঝুঁকি-ম্যাট্রিক্স দিয়ে: বিপদ × ঝুঁকিপ্রবণতা। বিপদ মানে শহরে ঝড়ো বৃষ্টি আসছে কিনা; ঝুঁকিপ্রবণতা মানে সেদিন বাকি ৩৯টি এলাকার তুলনায় আপনার এলাকা কোথায়। এরপর অ্যাপ সতর্ক থাকার সময় যোগ করে, আর Google Gemini শুধু মডেলের সংখ্যা ব্যবহার করে আপনার অবস্থার জন্য এক-দুই লাইনের সহজ পরামর্শ লেখে।</li>
+    </ol>
+    <h3>মডেলটি কীভাবে শেখানো হয়েছে</h3>
+    <p>ঢাকার জলাবদ্ধতার কোনো সরকারি ডেটাবেস নেই, তাই আমরা নিজেরা বানিয়েছি: ${bnDigits(c.rain_period[0].slice(0,4))} থেকে ${bnDigits(c.rain_period[1].slice(0,4))} সালের ${bnDigits(c.n_reports)}টি ঘটনা, প্রতিটি জাতীয় দৈনিকের প্রতিবেদন থেকে, যেখানে ডুবে যাওয়া জায়গার নাম আছে। প্রতিটি ঘটনার সঙ্গে সেদিনের ERA5 ঘণ্টাভিত্তিক বৃষ্টির ডেটা মেলানো হয়েছে।</p>
+    <p>মডেলটি দুটি পদ্ধতির মিশ্রণ: গ্রেডিয়েন্ট বুস্টিং (LightGBM/XGBoost-এর একই পরিবার), যাতে ভৌত নিয়ম বেঁধে দেওয়া (বেশি বৃষ্টিতে ঝুঁকি কখনো কমবে না, উঁচু জমিতে কখনো বাড়বে না), আর লজিস্টিক রিগ্রেশন, যা কম উদাহরণেও স্থির থাকে।</p>
+    <h3>কতটা ভালো কাজ করে</h3>
+    <p>${bnDigits(TEST_YEAR(c)-1)} পর্যন্ত ডেটায় শিখিয়ে ${bnDigits(TEST_YEAR(c))} থেকে পরের বছরগুলোতে পরীক্ষা করা হয়েছে, যা মডেল আগে দেখেনি। স্কোর ROC-AUC: ১.০ নিখুঁত, ০.৫ মানে আন্দাজ।</p>
+    ${table}
+    <p>সতর্কবার্তা হিসেবে, প্রতিটি বছর এমন মডেলে পরীক্ষা করা হয়েছে যা ওই বছর দেখেনি: খবরে আসা ঝড়ের দিনগুলোর ${pct(ar.event_days_hazard_moderate_or_high)}-এ অ্যাপ সতর্ক করেছে। পত্রিকায় আসা এলাকার ${pct(ar.reported_areas_flagged_moderate_or_high)} মাঝারি বা বেশি এবং ${pct(ar.reported_areas_flagged_high)} বেশি ঝুঁকি পেয়েছে; খবরে না আসা এলাকার ক্ষেত্রে বেশি ঝুঁকি মাত্র ${pct(ar.unreported_areas_on_event_days_flagged_high)}। হালকা বৃষ্টির দিনে মাত্র ${pct(ar.light_rain_days_flagged_moderate_or_high)} এলাকায় সতর্কবার্তা এসেছে।</p>
+    <h3>সীমাবদ্ধতা</h3>
+    <p>পত্রিকা ব্যস্ত এলাকার খবর বেশি দেয়, তাই নিরিবিলি এলাকার ঝুঁকি কম দেখাতে পারে, আর সব ঝড়ের খবর খুঁজে পাওয়া যায়নি। ঐতিহাসিক রিঅ্যানালাইসিস বৃষ্টি ঝড়ের দিনে আবহাওয়া অধিদপ্তরের মাপের প্রায় চার ভাগের এক ভাগ দেখায়, তাই অল্প সময়ের ভারী বর্ষণ মসৃণ হয়ে যায়। উচ্চতার তথ্য ৯০ মিটারের স্যাটেলাইট মডেল থেকে, যাতে ভবনের উচ্চতাও কিছুটা আছে। পূর্বাভাস পুরো শহরের, তাই খুব স্থানীয় ঝড় বাদ পড়তে পারে। এটি সতর্কবার্তা, নিশ্চয়তা নয়; সিটি কর্পোরেশন ও আবহাওয়া অধিদপ্তরের নির্দেশনা মেনে চলুন।</p>
+    <h3>কেন গুরুত্বপূর্ণ</h3>
+    <p>আগাম সতর্কবার্তা SDG ১১.৫ (শহরে পানি-সংক্রান্ত দুর্যোগের ক্ষতি কমানো), SDG ১৩.১ (জলবায়ু ঝুঁকিতে সহনশীলতা) এবং সেন্ডাই ফ্রেমওয়ার্কের লক্ষ্য G-এর মূল অংশ। একই মডেল দেখাতে পারে কোন বৃষ্টিতে কোন এলাকা আগে ডোবে, যা ড্রেনেজ বিনিয়োগে পরিকল্পনাবিদদের কাজে লাগবে।</p>
+    <h3>জলাবদ্ধতার রেকর্ডের উৎস</h3><p id="srcs"></p>`;
+  fetch("/static/events.json").then(r => r.ok ? r.json() : []).then(ev => {
+    $("#srcs").innerHTML = ev.map(e => `${bnDigits(e.date)}: ${e.links.map((u,i) => `<a href="${u}" target="_blank" rel="noopener">${new URL(u).hostname.replace("www.","")}${e.links.length>1?" "+(i+1):""}</a>`).join(", ")}`).join("<br>");
+  }).catch(() => {});
+}
+const BN_ROWS = ["পানি জমবে? মডেল (বুস্টিং + লজিস্টিক মিশ্রণ)", "একই মডেল, এলাকার ইতিহাস ছাড়া", "শুধু গ্রেডিয়েন্ট বুস্টিং", "শুধু লজিস্টিক রিগ্রেশন", "শুধু বৃষ্টিভিত্তিক এমএল", "নিয়ম: ৩ ঘণ্টার বৃষ্টি"];
+const TEST_YEAR = c => parseInt(c.temporal_holdout.test.replace(/\D/g,""), 10);
+
+/* ---------- events ---------- */
+function choose(id){ st.area = id; store.set("pj_area", id); $("#area").value = id; loadRisk(); }
+$("#area").addEventListener("change", e => choose(e.target.value));
+document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => {
+  st.lang = b.dataset.lang; store.set("pj_lang", st.lang); applyText(); if (st.data) loadRisk(); drawMap();
+}));
+document.querySelectorAll("[data-p]").forEach(b => b.addEventListener("click", () => {
+  st.persona = b.dataset.p; store.set("pj_persona", st.persona); applyText(); loadRisk();
+}));
+document.querySelectorAll("[data-day]").forEach(b => b.addEventListener("click", () => {
+  st.day = +b.dataset.day; document.querySelectorAll("[data-day]").forEach(x => x.setAttribute("aria-pressed", x === b)); drawMap();
+}));
+document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", e => {
+  e.preventDefault(); const go = b.dataset.go;
+  document.querySelectorAll(".page").forEach(p => p.classList.toggle("on", p.id === go));
+  document.querySelectorAll("nav.tabs button").forEach(x => x.dataset.go === go ? x.setAttribute("aria-current", "page") : x.removeAttribute("aria-current"));
+  window.scrollTo(0,0);
+  if (go === "home" && map) setTimeout(() => map.invalidateSize(), 50);
+  if (go === "how") setTimeout(() => { initReplay(); map2 && map2.invalidateSize(); }, 50);
+}));
+$("#locate").addEventListener("click", () => {
+  if (!navigator.geolocation){ alert(t("noGeo")); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    const {latitude:la, longitude:lo} = pos.coords;
+    const dist = a => Math.hypot((a.lat - la) * 111, (a.lon - lo) * 101.8);
+    const best = st.areas.reduce((m,a) => dist(a) < dist(m) ? a : m);
+    if (dist(best) > 6){ alert(t("farOut")); return; }
+    choose(best.id);
+  }, () => alert(t("noGeo")), {timeout:8000});
+});
+
+(async function init(){
+  st.areas = await getJSON("/api/areas");
+  if (!st.areas.some(a => a.id === st.area)) st.area = "malibagh";
+  applyText(); initMap(); loadRisk(); loadCity();
+  st.card = await getJSON("/api/model").catch(() => null); if (st.card) renderHow();
+  rpList = (await getJSON("/api/replays").catch(() => [])).reverse();
+  if (rpList.length){ const pick = rpList.find(e => e.date === "2026-07-12") || rpList[0]; st.rpDate = pick.date; fillReplaySelect(); loadReplay(pick.date); }
+})();
+</script>
+</body>
+</html>

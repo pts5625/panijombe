@@ -1,0 +1,147 @@
+{
+  "trained_on": "2026-10-22",
+  "algorithm": "Rank blend of histogram gradient boosting (monotonic physical constraints) and logistic regression",
+  "model_selection": "Chosen by leave-one-year-out cross-validation among 5 variants; 2023+ hold-out used only for the final report",
+  "features": [
+    "r24",
+    "r1max",
+    "r3max",
+    "r6max",
+    "rprev1",
+    "r3d",
+    "r7d",
+    "doy_sin",
+    "doy_cos",
+    "elev",
+    "rel_elev",
+    "dscc",
+    "prior"
+  ],
+  "monotonic": {
+    "r24": 1,
+    "r1max": 1,
+    "r3max": 1,
+    "r6max": 1,
+    "rprev1": 1,
+    "r3d": 1,
+    "r7d": 0,
+    "doy_sin": 0,
+    "doy_cos": 0,
+    "elev": -1,
+    "rel_elev": -1,
+    "dscc": 0,
+    "prior": 1
+  },
+  "decision": {
+    "hazard_moderate": 0.7496,
+    "hazard_high": 0.8054,
+    "city_score": "mean of the 5 highest area scores that day",
+    "susceptibility": "area's rank among the 40 areas that day, in thirds",
+    "matrix": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        1
+      ],
+      [
+        1,
+        2,
+        2
+      ]
+    ]
+  },
+  "rain_source": "Open-Meteo historical weather API (ERA5 reanalysis), hourly",
+  "rain_period": [
+    "2015-01-01",
+    "2026-10-15"
+  ],
+  "n_reports": 31,
+  "n_event_days": 30,
+  "n_training_rows": 94720,
+  "n_positive_area_days": 331,
+  "median_reanalysis_rain_on_event_days_mm": 21.6,
+  "temporal_holdout": {
+    "train": "<= 2022",
+    "test": ">= 2023",
+    "results": {
+      "Pani Jombe model (boosting + logistic blend)": {
+        "auc_area_day": 0.874,
+        "ap_area_day": 0.046,
+        "base_rate": 0.006,
+        "auc_spatial_within_event": 0.709,
+        "auc_event_day": 0.847,
+        "n_event_days": 16,
+        "n_rain_days": 725
+      },
+      "  same, without area history": {
+        "auc_area_day": 0.86,
+        "ap_area_day": 0.043,
+        "base_rate": 0.006,
+        "auc_spatial_within_event": 0.541,
+        "auc_event_day": 0.849,
+        "n_event_days": 16,
+        "n_rain_days": 725
+      },
+      "Gradient boosting alone": {
+        "auc_area_day": 0.874,
+        "ap_area_day": 0.03,
+        "base_rate": 0.006,
+        "auc_spatial_within_event": 0.707,
+        "auc_event_day": 0.837,
+        "n_event_days": 16,
+        "n_rain_days": 725
+      },
+      "Logistic regression alone": {
+        "auc_area_day": 0.832,
+        "ap_area_day": 0.105,
+        "base_rate": 0.006,
+        "auc_spatial_within_event": 0.712,
+        "auc_event_day": 0.805,
+        "n_event_days": 16,
+        "n_rain_days": 725
+      },
+      "Rain-only ML (no area features)": {
+        "auc_area_day": 0.857,
+        "ap_area_day": 0.031,
+        "base_rate": 0.006,
+        "auc_spatial_within_event": 0.5,
+        "auc_event_day": 0.839,
+        "n_event_days": 16,
+        "n_rain_days": 725
+      },
+      "Rule: 3-hour rain total": {
+        "auc_area_day": 0.851,
+        "ap_area_day": 0.056,
+        "base_rate": 0.006,
+        "auc_spatial_within_event": 0.5,
+        "auc_event_day": 0.825,
+        "n_event_days": 16,
+        "n_rain_days": 725
+      }
+    }
+  },
+  "leave_one_year_out": {
+    "auc_area_day": 0.83,
+    "ap_area_day": 0.02,
+    "base_rate": 0.004,
+    "auc_spatial_within_event": 0.729,
+    "auc_event_day": 0.799,
+    "n_event_days": 30,
+    "n_rain_days": 2276
+  },
+  "alert_rates_leave_one_year_out": {
+    "event_days_hazard_moderate_or_high": 0.833,
+    "event_days_hazard_high": 0.733,
+    "reported_areas_flagged_moderate_or_high": 0.852,
+    "reported_areas_flagged_high": 0.65,
+    "unreported_areas_on_event_days_flagged_high": 0.436,
+    "light_rain_days_flagged_moderate_or_high": 0.061,
+    "light_rain_days_flagged_high": 0.014,
+    "heavy_rain_no_report_days_flagged_high": 0.675
+  }
+}
