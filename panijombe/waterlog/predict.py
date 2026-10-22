@@ -1,4 +1,4 @@
-"""Live prediction: Open-Meteo multi-model forecast -> features -> model -> decision."""
+"""Live prediction: OpenWeather One Call 4.0 -> fallback -> model -> decision."""
 from __future__ import annotations
 
 import json
@@ -22,7 +22,7 @@ TZ = ZoneInfo("Asia/Dhaka")
 POINTS = {"lat": "23.80,23.74", "lon": "90.40,90.41"}
 ENSEMBLE = ["ecmwf_ifs025", "gfs_seamless", "icon_seamless", "gem_seamless", "jma_seamless"]
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
-OPENWEATHER_URL = "https://api.openweathermap.org/data/3.0/onecall"
+OPENWEATHER_URL = "https://api.openweathermap.org/data/4.0/onecall/timeline/1h"
 OPENWEATHER_LAT = 23.78
 OPENWEATHER_LON = 90.40
 CACHE_SECONDS = 600
@@ -74,40 +74,74 @@ def _request(params):
     raise RuntimeError(f"Open-Meteo failed after 3 attempts: {last_error}")
 
 
-def fetch_openweather_fallback() -> dict:
-    """Use OpenWeather only when Open-Meteo is unavailable.
+def fetch_openweather() -> dict:
+    """Fetch OpenWeather One Call 4.0 hourly data using timeline pagination.
 
-    The key is read from the server environment and is never sent to the browser.
-    OpenWeather's hourly response normally covers the current day plus tomorrow;
-    this is enough for the app to keep operating, although antecedent-rain
-    features are less complete than with Open-Meteo's 7-day history.
+    One Call 4.0 returns at most 20 hourly records per response. The API's
+    next/prev URLs are followed without printing them because they may contain
+    the API key. If historical pages are unavailable, the forward forecast is
+    still sufficient for today's and tomorrow's prediction.
     """
     key = os.getenv("OPENWEATHER_API_KEY")
     if not key:
         raise RuntimeError("OPENWEATHER_API_KEY is not configured")
 
-    r = requests.get(
-        OPENWEATHER_URL,
-        params={
-            "lat": OPENWEATHER_LAT,
-            "lon": OPENWEATHER_LON,
-            "exclude": "minutely,alerts",
-            "units": "metric",
-            "appid": key,
-        },
-        timeout=30,
-        headers={"User-Agent": "PaniJombe/1.0"},
-    )
-    r.raise_for_status()
-    raw = r.json()
+    params = {
+        "lat": OPENWEATHER_LAT,
+        "lon": OPENWEATHER_LON,
+        "units": "metric",
+        "appid": key,
+    }
+    headers = {"User-Agent": "PaniJombe/1.0"}
 
-    times, precipitation = [], []
-    for item in raw.get("hourly", []):
-        dt = datetime.fromtimestamp(item["dt"], tz=TZ).replace(tzinfo=None)
-        rain = (item.get("rain") or {}).get("1h", 0.0)
-        snow = (item.get("snow") or {}).get("1h", 0.0)
-        times.append(dt)
-        precipitation.append(float(rain or 0) + float(snow or 0))
+    def get_page(url, query=None):
+        r = requests.get(url, params=query, timeout=30, headers=headers)
+        if not r.ok:
+            # Do not include the URL: it can contain the API key.
+            raise RuntimeError(
+                f"OpenWeather One Call 4.0 HTTP {r.status_code}: {r.text[:300]}"
+            )
+        return r.json()
+
+    first = get_page(OPENWEATHER_URL, params)
+    pages = [first]
+
+    # Forward: collect enough data for today and tomorrow, plus a buffer.
+    next_url = first.get("next")
+    for _ in range(5):
+        if not next_url:
+            break
+        page = get_page(next_url)
+        pages.append(page)
+        next_url = page.get("next")
+
+    # Backward: use available previous pages for antecedent-rain features.
+    prev_pages = []
+    prev_url = first.get("prev")
+    for _ in range(9):
+        if not prev_url:
+            break
+        page = get_page(prev_url)
+        prev_pages.append(page)
+        prev_url = page.get("prev")
+
+    pages = list(reversed(prev_pages)) + pages
+    by_time = {}
+    for page in pages:
+        for item in page.get("data", []):
+            if "dt" not in item:
+                continue
+            dt = datetime.fromtimestamp(item["dt"], tz=TZ).replace(tzinfo=None)
+            rain = (item.get("rain") or {}).get("1h", 0.0)
+            snow = (item.get("snow") or {}).get("1h", 0.0)
+            by_time[dt] = float(rain or 0) + float(snow or 0)
+
+    if not by_time:
+        raise RuntimeError("OpenWeather returned no hourly data")
+
+    ordered = sorted(by_time.items())
+    times = [x[0] for x in ordered]
+    precipitation = [x[1] for x in ordered]
 
     if not precipitation:
         raise RuntimeError("OpenWeather returned no hourly precipitation")
@@ -120,14 +154,13 @@ def fetch_openweather_fallback() -> dict:
     return {
         "members": {"openweather": series},
         "fetched_at": datetime.now(TZ).isoformat(timespec="minutes"),
-        "url": "OpenWeather One Call API",
-        "models": ["openweather"],
+        "url": "OpenWeather One Call 4.0",
+        "models": ["openweather_onecall_4"],
     }
 
 
 def fetch_forecast() -> dict:
-    """Hourly rain for the past 7 days + next 3 days from several weather
-    models. Returns {member_name: hourly Series} plus metadata."""
+    """Fetch OpenWeather first, then use Open-Meteo if it is unavailable."""
     sample = os.getenv("PJ_SAMPLE_FORECAST")
     with _lock:
         if _cache["data"] and time.time() - _cache["t"] < CACHE_SECONDS:
@@ -138,23 +171,23 @@ def fetch_forecast() -> dict:
             raw, url = json.loads(Path(sample).read_text()), "sample-file (offline test)"
         else:
             try:
-                raw, url = _request({**base, "models": ",".join(ENSEMBLE)})
-            except Exception as first_error:
-                print(f"Open-Meteo multi-model failed: {first_error}", flush=True)
+                openweather = fetch_openweather()
+                _cache.update(t=time.time(), data=openweather)
+                return openweather
+            except Exception as primary_error:
+                print(f"OpenWeather One Call 4.0 failed: {primary_error}", flush=True)
                 try:
-                    raw, url = _request({
-                        **base,
-                        "models": "gfs_seamless,icon_seamless",
-                    })
-                except Exception as second_error:
-                    print(f"Open-Meteo reduced-model fallback failed: {second_error}", flush=True)
+                    raw, url = _request({**base, "models": ",".join(ENSEMBLE)})
+                except Exception as first_error:
+                    print(f"Open-Meteo multi-model failed: {first_error}", flush=True)
                     try:
+                        raw, url = _request({
+                            **base,
+                            "models": "gfs_seamless,icon_seamless",
+                        })
+                    except Exception as second_error:
+                        print(f"Open-Meteo reduced-model fallback failed: {second_error}", flush=True)
                         raw, url = _request(base)  # single best-match model
-                    except Exception as third_error:
-                        print(f"Open-Meteo best-match fallback failed: {third_error}", flush=True)
-                        fallback = fetch_openweather_fallback()
-                        _cache.update(t=time.time(), data=fallback)
-                        return fallback
         locs = raw if isinstance(raw, list) else [raw]
         members: dict[str, list[pd.Series]] = {}
         for loc in locs:
