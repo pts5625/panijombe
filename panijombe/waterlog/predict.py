@@ -22,6 +22,9 @@ TZ = ZoneInfo("Asia/Dhaka")
 POINTS = {"lat": "23.80,23.74", "lon": "90.40,90.41"}
 ENSEMBLE = ["ecmwf_ifs025", "gfs_seamless", "icon_seamless", "gem_seamless", "jma_seamless"]
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+OPENWEATHER_URL = "https://api.openweathermap.org/data/3.0/onecall"
+OPENWEATHER_LAT = 23.78
+OPENWEATHER_LON = 90.40
 CACHE_SECONDS = 600
 HEAVY_MM_PER_HOUR = 2.0     # hourly rate that starts to fill drains
 DRAIN_HOURS = 3             # typical hours water stays on Dhaka roads after a burst
@@ -47,9 +50,79 @@ _lock = threading.Lock()
 
 # ------------------------------------------------------------ live data
 def _request(params):
-    r = requests.get(FORECAST_URL, params=params, timeout=15)
+    """Request Open-Meteo with retries for transient upstream failures."""
+    last_error = None
+    for attempt in range(3):
+        try:
+            r = requests.get(
+                FORECAST_URL,
+                params=params,
+                timeout=30,
+                headers={"User-Agent": "PaniJombe/1.0"},
+            )
+            if r.status_code in (429, 500, 502, 503, 504):
+                raise RuntimeError(
+                    f"Open-Meteo temporary HTTP {r.status_code}: {r.text[:200]}"
+                )
+            r.raise_for_status()
+            return r.json(), r.url
+        except Exception as e:
+            last_error = e
+            print(f"Open-Meteo attempt {attempt + 1} failed: {e}", flush=True)
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+    raise RuntimeError(f"Open-Meteo failed after 3 attempts: {last_error}")
+
+
+def fetch_openweather_fallback() -> dict:
+    """Use OpenWeather only when Open-Meteo is unavailable.
+
+    The key is read from the server environment and is never sent to the browser.
+    OpenWeather's hourly response normally covers the current day plus tomorrow;
+    this is enough for the app to keep operating, although antecedent-rain
+    features are less complete than with Open-Meteo's 7-day history.
+    """
+    key = os.getenv("OPENWEATHER_API_KEY")
+    if not key:
+        raise RuntimeError("OPENWEATHER_API_KEY is not configured")
+
+    r = requests.get(
+        OPENWEATHER_URL,
+        params={
+            "lat": OPENWEATHER_LAT,
+            "lon": OPENWEATHER_LON,
+            "exclude": "minutely,alerts",
+            "units": "metric",
+            "appid": key,
+        },
+        timeout=30,
+        headers={"User-Agent": "PaniJombe/1.0"},
+    )
     r.raise_for_status()
-    return r.json(), r.url
+    raw = r.json()
+
+    times, precipitation = [], []
+    for item in raw.get("hourly", []):
+        dt = datetime.fromtimestamp(item["dt"], tz=TZ).replace(tzinfo=None)
+        rain = (item.get("rain") or {}).get("1h", 0.0)
+        snow = (item.get("snow") or {}).get("1h", 0.0)
+        times.append(dt)
+        precipitation.append(float(rain or 0) + float(snow or 0))
+
+    if not precipitation:
+        raise RuntimeError("OpenWeather returned no hourly precipitation")
+
+    series = pd.Series(
+        precipitation,
+        index=pd.DatetimeIndex(times),
+        name="openweather",
+    )
+    return {
+        "members": {"openweather": series},
+        "fetched_at": datetime.now(TZ).isoformat(timespec="minutes"),
+        "url": "OpenWeather One Call API",
+        "models": ["openweather"],
+    }
 
 
 def fetch_forecast() -> dict:
@@ -66,8 +139,22 @@ def fetch_forecast() -> dict:
         else:
             try:
                 raw, url = _request({**base, "models": ",".join(ENSEMBLE)})
-            except Exception:
-                raw, url = _request(base)  # single best-match model
+            except Exception as first_error:
+                print(f"Open-Meteo multi-model failed: {first_error}", flush=True)
+                try:
+                    raw, url = _request({
+                        **base,
+                        "models": "gfs_seamless,icon_seamless",
+                    })
+                except Exception as second_error:
+                    print(f"Open-Meteo reduced-model fallback failed: {second_error}", flush=True)
+                    try:
+                        raw, url = _request(base)  # single best-match model
+                    except Exception as third_error:
+                        print(f"Open-Meteo best-match fallback failed: {third_error}", flush=True)
+                        fallback = fetch_openweather_fallback()
+                        _cache.update(t=time.time(), data=fallback)
+                        return fallback
         locs = raw if isinstance(raw, list) else [raw]
         members: dict[str, list[pd.Series]] = {}
         for loc in locs:
